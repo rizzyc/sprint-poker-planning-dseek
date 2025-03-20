@@ -1639,7 +1639,7 @@ FIREBASE: `))}restoreState_(){this.tryAuth(),this.tryAppCheck();for(const t of t
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */Ma(eD,nD,"app");const iD={apiKey:void 0,authDomain:void 0,databaseURL:void 0,projectId:void 0,storageBucket:void 0,messagingSenderId:void 0,appId:void 0},sD=h0(iD),xa=$w(sD);/*!
+ */Ma(eD,nD,"app");const iD={apiKey:"AIzaSyBEe9f10yv7lbCCpGffuh-j9mfbo7wC9_w",authDomain:"pokerplanning-f5c88.firebaseapp.com",databaseURL:void 0,projectId:"pokerplanning-f5c88",storageBucket:"pokerplanning-f5c88.firebasestorage.app",messagingSenderId:"699037190074",appId:"1:699037190074:web:36b5befa07b262c1557f83"},sD=h0(iD),xa=$w(sD);/*!
  * @kurkle/color v0.3.4
  * https://github.com/kurkle/color#readme
  * (c) 2024 Jukka Kurkela
