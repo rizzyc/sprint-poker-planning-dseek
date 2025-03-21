@@ -14,6 +14,7 @@ type Participant = {
 
 type Session = {
   participants: Record<string, Participant>;
+  topic: string;
   revealed: boolean;
 };
 
@@ -22,22 +23,33 @@ const DEFAULT_NAME = "Anonymous";
 
 export default function App() {
   const [sessionId, setSessionId] = useState("");
-  const [name] = useState(localStorage.getItem("userName") || "");
+  const [name, setName] = useState("");
   const [userId] = useState(
     localStorage.getItem("userId") || crypto.randomUUID(),
   );
   const [session, setSession] = useState<Session | null>(null);
-  const [isAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [newTopic, setNewTopic] = useState("");
+  const [showNameModal, setShowNameModal] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("userId", userId);
+  }, [userId]);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("session");
     if (id) {
       setSessionId(id);
       const sessionRef = ref(db, `sessions/${id}`);
       const unsubscribe = onValue(sessionRef, (snapshot) => {
-        setSession(snapshot.val());
+        const data = snapshot.val();
+        if (data) {
+          setSession(data);
+          if (!data.participants[userId] && !localStorage.getItem("userName")) {
+            setShowNameModal(true);
+          }
+        }
       });
       return () => unsubscribe();
     }
@@ -45,27 +57,37 @@ export default function App() {
 
   const createSession = async () => {
     const id = crypto.randomUUID();
+    const userName = name.trim() || DEFAULT_NAME;
+    localStorage.setItem("userName", userName);
+
     await set(ref(db, `sessions/${id}`), {
       participants: {
         [userId]: {
-          name: name || DEFAULT_NAME,
+          name: userName,
           vote: null,
           isAdmin: true,
         },
       },
+      topic: newTopic || "Default Topic",
       revealed: false,
     });
+
+    setIsAdmin(true);
     window.history.pushState({}, "", `?session=${id}`);
     setSessionId(id);
   };
 
-  const joinSession = async () => {
+  const joinSession = async (userName: string) => {
     if (!sessionId) return;
+    const finalName = userName.trim() || DEFAULT_NAME;
+    localStorage.setItem("userName", finalName);
+
     await update(ref(db, `sessions/${sessionId}/participants/${userId}`), {
-      name: name || DEFAULT_NAME,
+      name: finalName,
       vote: null,
       isAdmin: false,
     });
+    setShowNameModal(false);
   };
 
   const submitVote = async (value: string) => {
@@ -75,41 +97,42 @@ export default function App() {
     });
   };
 
-  const revealVotes = async () => {
-    if (!sessionId) return;
-    await update(ref(db, `sessions/${sessionId}`), { revealed: true });
-  };
-
   const resetSession = async () => {
     if (!sessionId || !session) return;
 
-    const updates: Record<string, null> = {};
+    const updates: Record<string, any> = {
+      revealed: false,
+      topic: newTopic || session.topic,
+    };
+
     Object.keys(session.participants).forEach((uid) => {
       updates[`participants/${uid}/vote`] = null;
     });
 
-    await update(ref(db, `sessions/${sessionId}`), {
-      ...updates,
-      revealed: false,
-    });
+    await update(ref(db, `sessions/${sessionId}`), updates);
+    setNewTopic("");
   };
 
   if (!sessionId) {
     return (
-      <div className="container">
-        <input
-          value={name}
-          onChange={(e) => localStorage.setItem("userName", e.target.value)}
-          placeholder="Your name"
-        />
-        <button onClick={createSession}>Create New Session</button>
-        <div className="or">OR</div>
-        <input
-          value={sessionId}
-          onChange={(e) => setSessionId(e.target.value)}
-          placeholder="Enter session ID"
-        />
-        <button onClick={joinSession}>Join Session</button>
+      <div className="container" id="main-container">
+        <div id="session-creation">
+          <input
+            id="topic-input"
+            value={newTopic}
+            onChange={(e) => setNewTopic(e.target.value)}
+            placeholder="Session topic"
+          />
+          <input
+            id="name-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+          />
+          <button id="create-session-btn" onClick={createSession}>
+            Create New Session
+          </button>
+        </div>
       </div>
     );
   }
@@ -133,13 +156,39 @@ export default function App() {
   });
 
   return (
-    <div className="container">
-      <h2>Session: {sessionId}</h2>
+    <div className="container" id="main-container">
+      {showNameModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>Enter Your Name</h3>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+            />
+            <button onClick={() => joinSession(name)}>Join Session</button>
+          </div>
+        </div>
+      )}
+
+      <h2 id="session-topic">{session.topic}</h2>
 
       {isAdmin && (
         <div className="admin-controls">
-          <button onClick={revealVotes}>Reveal Votes</button>
-          <button onClick={resetSession}>Reset Session</button>
+          <input
+            id="new-topic-input"
+            value={newTopic}
+            onChange={(e) => setNewTopic(e.target.value)}
+            placeholder="New topic"
+          />
+          <button onClick={resetSession}>Reset Votes & Change Topic</button>
+          <button
+            onClick={() =>
+              update(ref(db, `sessions/${sessionId}`), { revealed: true })
+            }
+          >
+            Reveal Votes
+          </button>
         </div>
       )}
 
@@ -166,10 +215,11 @@ export default function App() {
         </div>
       )}
 
-      <div className="voting-grid">
+      <div className="voting-grid" id="voting-grid">
         {FIBONACCI.map((value) => (
           <button
             key={value}
+            id={`vote-btn-${value}`}
             onClick={() => submitVote(value)}
             className={
               session.participants[userId]?.vote === value ? "selected" : ""
