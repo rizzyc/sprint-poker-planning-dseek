@@ -31,26 +31,51 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [newTopic, setNewTopic] = useState("");
   const [showNameModal, setShowNameModal] = useState(false);
+  const [loadingError, setLoadingError] = useState("");
+
+  // Initialize user ID
+  useEffect(() => {
+    localStorage.setItem("userId", userId);
+    if (!localStorage.getItem("userName")) {
+      setShowNameModal(true);
+    }
+  }, [userId]);
 
   useEffect(() => {
     localStorage.setItem("userId", userId);
   }, [userId]);
 
+  // Session loading effect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("session");
+
     if (id) {
       setSessionId(id);
       const sessionRef = ref(db, `sessions/${id}`);
-      const unsubscribe = onValue(sessionRef, (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
+
+      const unsubscribe = onValue(
+        sessionRef,
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            setLoadingError("Session not found");
+            return;
+          }
+
+          const data = snapshot.val();
           setSession(data);
+
+          // Check if user needs to provide name
           if (!data.participants[userId] && !localStorage.getItem("userName")) {
             setShowNameModal(true);
           }
-        }
-      });
+        },
+        (error) => {
+          setLoadingError("Failed to load session");
+          console.error("Database error:", error);
+        },
+      );
+
       return () => unsubscribe();
     }
   }, [userId]);
@@ -58,37 +83,75 @@ export default function App() {
   const createSession = async () => {
     const id = crypto.randomUUID();
     const userName = name.trim() || DEFAULT_NAME;
-    localStorage.setItem("userName", userName);
 
-    await set(ref(db, `sessions/${id}`), {
-      participants: {
-        [userId]: {
-          name: userName,
-          vote: null,
-          isAdmin: true,
+    try {
+      await set(ref(db, `sessions/${id}`), {
+        participants: {
+          [userId]: {
+            name: userName,
+            vote: null,
+            isAdmin: true,
+          },
         },
-      },
-      topic: newTopic || "Default Topic",
-      revealed: false,
-    });
+        topic: newTopic || "Default Topic",
+        revealed: false,
+      });
 
-    setIsAdmin(true);
-    window.history.pushState({}, "", `?session=${id}`);
-    setSessionId(id);
+      localStorage.setItem("userName", userName);
+      setIsAdmin(true);
+      window.history.pushState({}, "", `?session=${id}`);
+      setSessionId(id);
+    } catch (error) {
+      console.error("Create session error:", error);
+    }
   };
 
   const joinSession = async (userName: string) => {
-    if (!sessionId) return;
     const finalName = userName.trim() || DEFAULT_NAME;
-    localStorage.setItem("userName", finalName);
 
-    await update(ref(db, `sessions/${sessionId}/participants/${userId}`), {
-      name: finalName,
-      vote: null,
-      isAdmin: false,
-    });
-    setShowNameModal(false);
+    try {
+      await update(ref(db, `sessions/${sessionId}/participants/${userId}`), {
+        name: finalName,
+        vote: null,
+        isAdmin: false,
+      });
+
+      localStorage.setItem("userName", finalName);
+      setShowNameModal(false);
+      setName(finalName);
+    } catch (error) {
+      console.error("Join session error:", error);
+    }
   };
+
+  if (!sessionId) {
+    return (
+      <div className="container">
+        <input
+          id="topic-input"
+          value={newTopic}
+          onChange={(e) => setNewTopic(e.target.value)}
+          placeholder="Session topic"
+        />
+        <input
+          id="name-input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Your name"
+        />
+        <button onClick={createSession}>Create New Session</button>
+      </div>
+    );
+  }
+
+  if (loadingError) {
+    return (
+      <div className="container">
+        <h2>Error: {loadingError}</h2>
+        <button onClick={() => window.location.reload()}>Retry</button>
+      </div>
+    );
+  }
 
   const submitVote = async (value: string) => {
     if (!sessionId) return;
@@ -137,7 +200,7 @@ export default function App() {
     );
   }
 
-  if (!session) return <div>Loading...</div>;
+  if (!session) return <div className="container">Loading session...</div>;
 
   const votes = Object.values(session.participants)
     .filter((p) => p.vote && !p.isAdmin)
@@ -160,8 +223,9 @@ export default function App() {
       {showNameModal && (
         <div className="modal-overlay">
           <div className="modal">
-            <h3>Enter Your Name</h3>
+            <h3>Enter Your Name to Join</h3>
             <input
+              autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your name"
